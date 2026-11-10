@@ -8,6 +8,7 @@
 #include "tf2_ros/buffer.h"
 #include "tf2_ros/static_transform_broadcaster.h"
 #include "tf2_ros/transform_listener.h"
+#include "geometry_msgs/msg/twist.hpp"
 
 class ApproachServiceServer : public rclcpp::Node {
 public:
@@ -20,6 +21,8 @@ public:
         "/scan", 
         10, 
         std::bind(&ApproachServiceServer::scan_callback, this, std::placeholders::_1));
+
+    cmd_pub_ = create_publisher<geometry_msgs::msg::Twist>("/cmd_vel", 10);
 
     service_ = create_service<attach_shelf::srv::GoToLoading>(
         "/approach_shelf",
@@ -87,6 +90,39 @@ private:
     static_broadcaster_->sendTransform(cart);
 
     RCLCPP_INFO(get_logger(), "Published cart_frame at (%.2f, %.2f) in odom", odom_x, odom_y);
+  
+    if (!request->attach_to_shelf) {
+      return;
+    }
+
+    RCLCPP_INFO(get_logger(), "Driving to cart_frame");
+    rclcpp::Rate rate(10);
+    while (rclcpp::ok()) {
+      geometry_msgs::msg::TransformStamped t;
+      try {
+        t = tf_buffer_->lookupTransform("robot_base_footprint", "cart_frame", tf2::TimePointZero);
+      } catch (const tf2::TransformException &ex) {
+        RCLCPP_WARN(get_logger(), "TF error: %s", ex.what());
+        rate.sleep();
+        continue;
+      }
+
+      double x = t.transform.translation.x;
+      double y = t.transform.translation.y;
+      double distance = std::sqrt(x * x + y * y);
+      if (distance < 0.05) {
+        break;
+      }
+
+      geometry_msgs::msg::Twist cmd;
+      cmd.linear.x = 0.2;
+      cmd.angular.z = 1.0 * std::atan2(y, x);
+      cmd_pub_->publish(cmd);
+      rate.sleep();
+    }
+
+    cmd_pub_->publish(geometry_msgs::msg::Twist());
+    RCLCPP_INFO(get_logger(), "Reached cart_frame");
   }
 
   std::vector<int> find_legs(const sensor_msgs::msg::LaserScan &scan) {
@@ -115,6 +151,7 @@ private:
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
   std::shared_ptr<tf2_ros::StaticTransformBroadcaster> static_broadcaster_;
+  rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_pub_;   
 };
 
 int main(int argc, char **argv) {
