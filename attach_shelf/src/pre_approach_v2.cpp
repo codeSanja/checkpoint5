@@ -8,6 +8,7 @@
 #include "nav_msgs/msg/odometry.hpp"
 #include "tf2/LinearMath/Matrix3x3.h"
 #include "tf2/LinearMath/Quaternion.h"
+#include "attach_shelf/srv/go_to_loading.hpp"
 
 using namespace std::chrono_literals;
 
@@ -26,6 +27,14 @@ public:
     timer_ = create_wall_timer(100ms, std::bind(&PreApproach::control_loop, this));
 
     odom_sub_ = create_subscription<nav_msgs::msg::Odometry>("/odom", 10, std::bind(&PreApproach::odom_callback, this, std::placeholders::_1));
+  
+    client_ = create_client<attach_shelf::srv::GoToLoading>("/approach_shelf");
+    while (!client_->wait_for_service(1s)) {
+      if (!rclcpp::ok()) {
+        return;
+      }
+      RCLCPP_INFO(get_logger(), "Waiting for /approach_shelf service...");
+    }
   }
 
 private:
@@ -44,6 +53,10 @@ private:
     }
 
     void control_loop() {
+        if (service_called_) {
+            return;
+        }
+
         geometry_msgs::msg::Twist cmd;
 
         if (!wall_reached_) {
@@ -65,12 +78,28 @@ private:
                 cmd_pub_->publish(cmd);
                 RCLCPP_INFO(get_logger(), "Rotation done, yaw %.0f deg. Pre-approach finished.",
                             yaw_ * 180.0 / M_PI);
-                rclcpp::shutdown();
+                call_approach_service();
                 return;
             }
         }
 
         cmd_pub_->publish(cmd);
+    }
+
+    void call_approach_service() {
+        service_called_ = true;
+        auto request = std::make_shared<attach_shelf::srv::GoToLoading::Request>();
+        request->attach_to_shelf = final_approach_;
+        RCLCPP_INFO(get_logger(), "Calling /approach_shelf (attach_to_shelf = %s)",
+                    final_approach_ ? "true" : "false");
+
+        client_->async_send_request(request,
+            [this](rclcpp::Client<attach_shelf::srv::GoToLoading>::SharedFuture future) {
+                auto response = future.get();
+                RCLCPP_INFO(get_logger(), "Service response: complete = %s",
+                            response->complete ? "true" : "false");
+                rclcpp::shutdown();
+            });
     }
 
     void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg) {
@@ -92,6 +121,8 @@ private:
     double obstacle_;
     double degrees_;
     bool final_approach_;
+    rclcpp::Client<attach_shelf::srv::GoToLoading>::SharedPtr client_;
+    bool service_called_ = false;
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_pub_;
     rclcpp::TimerBase::SharedPtr timer_;
     bool wall_reached_ = false;
