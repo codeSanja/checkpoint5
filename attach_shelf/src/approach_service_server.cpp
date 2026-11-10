@@ -3,10 +3,19 @@
 #include <cmath>
 #include <vector>
 #include "sensor_msgs/msg/laser_scan.hpp"
+#include "geometry_msgs/msg/transform_stamped.hpp"
+#include "tf2/LinearMath/Quaternion.h"
+#include "tf2_ros/buffer.h"
+#include "tf2_ros/static_transform_broadcaster.h"
+#include "tf2_ros/transform_listener.h"
 
 class ApproachServiceServer : public rclcpp::Node {
 public:
   ApproachServiceServer() : Node("approach_service_server") {
+    tf_buffer_ = std::make_shared<tf2_ros::Buffer>(get_clock());
+    tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+    static_broadcaster_ = std::make_shared<tf2_ros::StaticTransformBroadcaster>(this);
+
     scan_sub_ = create_subscription<sensor_msgs::msg::LaserScan>(
         "/scan", 
         10, 
@@ -25,7 +34,7 @@ private:
     last_scan_ = msg;
   }
 
-  void service_callback(
+    void service_callback(
       const std::shared_ptr<attach_shelf::srv::GoToLoading::Request> request,
       std::shared_ptr<attach_shelf::srv::GoToLoading::Response> response) {
     RCLCPP_INFO(get_logger(), "Request: attach_to_shelf = %s",
@@ -40,16 +49,44 @@ private:
     std::vector<int> legs = find_legs(*last_scan_);
     RCLCPP_INFO(get_logger(), "Legs found: %zu", legs.size());
 
-    for (int i : legs) {
-      double angle = last_scan_->angle_min + i * last_scan_->angle_increment;
-      RCLCPP_INFO(get_logger(), "  ray %d: angle %.1f deg, range %.2f m, intensity %.0f",
-                  i, angle * 180.0 / M_PI, last_scan_->ranges[i], last_scan_->intensities[i]);
-    }
-
     if (legs.size() != 2) {
       RCLCPP_WARN(get_logger(), "Need exactly 2 legs, returning false");
       return;
     }
+
+    const auto &scan = *last_scan_;
+    double a1 = scan.angle_min + legs[0] * scan.angle_increment;
+    double a2 = scan.angle_min + legs[1] * scan.angle_increment;
+    double r1 = scan.ranges[legs[0]];
+    double r2 = scan.ranges[legs[1]];
+    double cx = (r1 * std::cos(a1) + r2 * std::cos(a2)) / 2.0;
+    double cy = (r1 * std::sin(a1) + r2 * std::sin(a2)) / 2.0;
+
+    geometry_msgs::msg::TransformStamped laser;
+    try {
+      laser = tf_buffer_->lookupTransform("odom", scan.header.frame_id, tf2::TimePointZero);
+    } catch (const tf2::TransformException &ex) {
+      RCLCPP_WARN(get_logger(), "TF error: %s", ex.what());
+      return;
+    }
+
+    tf2::Quaternion q(laser.transform.rotation.x, laser.transform.rotation.y,
+                      laser.transform.rotation.z, laser.transform.rotation.w);
+
+    tf2::Vector3 p = tf2::quatRotate(q, tf2::Vector3(cx, cy, 0.0));
+    double odom_x = laser.transform.translation.x + p.x();
+    double odom_y = laser.transform.translation.y + p.y();
+
+    geometry_msgs::msg::TransformStamped cart;
+    cart.header.stamp = now();
+    cart.header.frame_id = "odom";
+    cart.child_frame_id = "cart_frame";
+    cart.transform.translation.x = odom_x;
+    cart.transform.translation.y = odom_y;
+    cart.transform.rotation.w = 1.0;
+    static_broadcaster_->sendTransform(cart);
+
+    RCLCPP_INFO(get_logger(), "Published cart_frame at (%.2f, %.2f) in odom", odom_x, odom_y);
   }
 
   std::vector<int> find_legs(const sensor_msgs::msg::LaserScan &scan) {
@@ -75,6 +112,9 @@ private:
   rclcpp::Service<attach_shelf::srv::GoToLoading>::SharedPtr service_;
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
   sensor_msgs::msg::LaserScan::SharedPtr last_scan_;
+  std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
+  std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+  std::shared_ptr<tf2_ros::StaticTransformBroadcaster> static_broadcaster_;
 };
 
 int main(int argc, char **argv) {
