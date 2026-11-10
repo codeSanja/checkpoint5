@@ -12,6 +12,11 @@ find_package(sensor_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 
+add_executable(pre_approach_node src/pre_approach.cpp)
+ament_target_dependencies(pre_approach_node rclcpp sensor_msgs nav_msgs geometry_msgs)
+
+install(TARGETS pre_approach_node DESTINATION lib/${PROJECT_NAME})
+
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   # the following line skips the linter which checks for copyrights
