@@ -2,6 +2,11 @@
 #include <cmath>
 #include <limits>
 #include "sensor_msgs/msg/laser_scan.hpp"
+#include <algorithm>
+#include <chrono>
+#include "geometry_msgs/msg/twist.hpp"
+
+using namespace std::chrono_literals;
 
 class PreApproach : public rclcpp::Node {
 public:
@@ -12,6 +17,9 @@ public:
     RCLCPP_INFO(get_logger(), "obstacle = %.2f m, degrees = %.1f", obstacle_, degrees_);
 
     scan_sub_ = create_subscription<sensor_msgs::msg::LaserScan>("/scan", 10, std::bind(&PreApproach::scan_callback, this, std::placeholders::_1));
+ 
+    cmd_pub_ = create_publisher<geometry_msgs::msg::Twist>("/cmd_vel", 10);
+    timer_ = create_wall_timer(100ms, std::bind(&PreApproach::control_loop, this));
   }
 
 private:
@@ -29,11 +37,29 @@ private:
     RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000, "front: %.2f m", front_distance_);
   }
 
+    void control_loop() {
+        geometry_msgs::msg::Twist cmd;
+
+        if (!wall_reached_) {
+        if (front_distance_ > obstacle_) {
+            cmd.linear.x = 0.2;
+        } else {
+            wall_reached_ = true;
+            RCLCPP_INFO(get_logger(), "Obstacle at %.2f m, stopping", front_distance_);
+        }
+        }
+
+        cmd_pub_->publish(cmd);
+    }
+
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
   float front_distance_ = std::numeric_limits<float>::infinity();
 
   double obstacle_;
   double degrees_;
+    rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_pub_;
+  rclcpp::TimerBase::SharedPtr timer_;
+  bool wall_reached_ = false;
 };
 
 int main(int argc, char **argv) {
