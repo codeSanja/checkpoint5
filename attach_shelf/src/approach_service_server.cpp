@@ -9,6 +9,7 @@
 #include "tf2_ros/static_transform_broadcaster.h"
 #include "tf2_ros/transform_listener.h"
 #include "geometry_msgs/msg/twist.hpp"
+#include "std_msgs/msg/string.hpp"
 
 class ApproachServiceServer : public rclcpp::Node {
 public:
@@ -23,6 +24,8 @@ public:
         std::bind(&ApproachServiceServer::scan_callback, this, std::placeholders::_1));
 
     cmd_pub_ = create_publisher<geometry_msgs::msg::Twist>("/cmd_vel", 10);
+
+    elevator_pub_ = create_publisher<std_msgs::msg::String>("/elevator_up", 10);
 
     service_ = create_service<attach_shelf::srv::GoToLoading>(
         "/approach_shelf",
@@ -158,6 +161,10 @@ private:
 
     cmd_pub_->publish(geometry_msgs::msg::Twist());
     RCLCPP_INFO(get_logger(), "Moved 30 cm under the shelf");
+
+    elevator_pub_->publish(std_msgs::msg::String());
+    RCLCPP_INFO(get_logger(), "Shelf lifted");
+    response->complete = true;
   }
 
   std::vector<int> find_legs(const sensor_msgs::msg::LaserScan &scan) {
@@ -187,6 +194,7 @@ private:
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
   std::shared_ptr<tf2_ros::StaticTransformBroadcaster> static_broadcaster_;
   rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_pub_;   
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr elevator_pub_;
 };
 
 int main(int argc, char **argv) {
