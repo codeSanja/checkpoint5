@@ -123,6 +123,41 @@ private:
 
     cmd_pub_->publish(geometry_msgs::msg::Twist());
     RCLCPP_INFO(get_logger(), "Reached cart_frame");
+
+        double start_x = 0.0;
+    double start_y = 0.0;
+    bool start_set = false;
+    while (rclcpp::ok()) {
+      geometry_msgs::msg::TransformStamped t;
+      try {
+        t = tf_buffer_->lookupTransform("odom", "robot_base_footprint", tf2::TimePointZero);
+      } catch (const tf2::TransformException &ex) {
+        RCLCPP_WARN(get_logger(), "TF error: %s", ex.what());
+        rate.sleep();
+        continue;
+      }
+
+      double x = t.transform.translation.x;
+      double y = t.transform.translation.y;
+      if (!start_set) {
+        start_x = x;
+        start_y = y;
+        start_set = true;
+      }
+
+      double moved = std::sqrt((x - start_x) * (x - start_x) + (y - start_y) * (y - start_y));
+      if (moved >= 0.30) {
+        break;
+      }
+
+      geometry_msgs::msg::Twist cmd;
+      cmd.linear.x = 0.1;
+      cmd_pub_->publish(cmd);
+      rate.sleep();
+    }
+
+    cmd_pub_->publish(geometry_msgs::msg::Twist());
+    RCLCPP_INFO(get_logger(), "Moved 30 cm under the shelf");
   }
 
   std::vector<int> find_legs(const sensor_msgs::msg::LaserScan &scan) {
