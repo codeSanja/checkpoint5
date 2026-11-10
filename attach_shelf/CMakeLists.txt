@@ -23,6 +23,9 @@ rosidl_generate_interfaces(${PROJECT_NAME}
 add_executable(pre_approach_node src/pre_approach.cpp)
 ament_target_dependencies(pre_approach_node rclcpp sensor_msgs nav_msgs geometry_msgs tf2)
 
+add_executable(pre_approach_v2_node src/pre_approach_v2.cpp)
+ament_target_dependencies(pre_approach_v2_node rclcpp sensor_msgs nav_msgs geometry_msgs tf2)
+
 add_executable(approach_service_server_node src/approach_service_server.cpp)
 ament_target_dependencies(approach_service_server_node rclcpp sensor_msgs geometry_msgs tf2 tf2_ros std_msgs)
 
@@ -48,6 +51,7 @@ install(DIRECTORY
 
 install(TARGETS 
 	pre_approach_node 
+	pre_approach_v2_node
 	approach_service_server_node 
 	DESTINATION lib/${PROJECT_NAME})
 
