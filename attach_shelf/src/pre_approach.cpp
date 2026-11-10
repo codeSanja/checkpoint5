@@ -5,6 +5,9 @@
 #include <algorithm>
 #include <chrono>
 #include "geometry_msgs/msg/twist.hpp"
+#include "nav_msgs/msg/odometry.hpp"
+#include "tf2/LinearMath/Matrix3x3.h"
+#include "tf2/LinearMath/Quaternion.h"
 
 using namespace std::chrono_literals;
 
@@ -20,22 +23,24 @@ public:
  
     cmd_pub_ = create_publisher<geometry_msgs::msg::Twist>("/cmd_vel", 10);
     timer_ = create_wall_timer(100ms, std::bind(&PreApproach::control_loop, this));
+
+    odom_sub_ = create_subscription<nav_msgs::msg::Odometry>("/odom", 10, std::bind(&PreApproach::odom_callback, this, std::placeholders::_1));
   }
 
 private:
     void scan_callback(const sensor_msgs::msg::LaserScan::SharedPtr msg) {
-    int front = std::round(-msg->angle_min / msg->angle_increment);
-    float min_range = std::numeric_limits<float>::infinity();
-    for (int i = front - 5; i <= front + 5; ++i) {
-      if (std::isfinite(msg->ranges[i])) {
-        min_range = std::min(min_range, msg->ranges[i]);
-      }
-    }
-    front_distance_ = min_range;
+        int front = std::round(-msg->angle_min / msg->angle_increment);
+        float min_range = std::numeric_limits<float>::infinity();
+        for (int i = front - 5; i <= front + 5; ++i) {
+        if (std::isfinite(msg->ranges[i])) {
+            min_range = std::min(min_range, msg->ranges[i]);
+        }
+        }
+        front_distance_ = min_range;
 
-    // Let's keep the terminal readable
-    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000, "front: %.2f m", front_distance_);
-  }
+        // Let's keep the terminal readable
+        RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000, "front: %.2f m", front_distance_);
+    }
 
     void control_loop() {
         geometry_msgs::msg::Twist cmd;
@@ -52,14 +57,26 @@ private:
         cmd_pub_->publish(cmd);
     }
 
-  rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
-  float front_distance_ = std::numeric_limits<float>::infinity();
+    void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg) {
+        tf2::Quaternion q(msg->pose.pose.orientation.x, msg->pose.pose.orientation.y,
+                        msg->pose.pose.orientation.z, msg->pose.pose.orientation.w);
+        double roll, pitch;
+        tf2::Matrix3x3(q).getRPY(roll, pitch, yaw_);
+        RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000, "yaw: %.2f rad (%.0f deg)",
+                            yaw_, yaw_ * 180.0 / M_PI);
+    }
 
-  double obstacle_;
-  double degrees_;
+    rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
+    double yaw_ = 0.0;
+
+    rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
+    float front_distance_ = std::numeric_limits<float>::infinity();
+
+    double obstacle_;
+    double degrees_;
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_pub_;
-  rclcpp::TimerBase::SharedPtr timer_;
-  bool wall_reached_ = false;
+    rclcpp::TimerBase::SharedPtr timer_;
+    bool wall_reached_ = false;
 };
 
 int main(int argc, char **argv) {
