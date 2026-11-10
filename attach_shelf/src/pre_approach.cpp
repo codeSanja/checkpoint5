@@ -46,12 +46,27 @@ private:
         geometry_msgs::msg::Twist cmd;
 
         if (!wall_reached_) {
-        if (front_distance_ > obstacle_) {
-            cmd.linear.x = 0.2;
+            if (front_distance_ > obstacle_) {
+                cmd.linear.x = 0.2;
+            } else {
+                wall_reached_ = true;
+                target_yaw_ = yaw_ + degrees_ * M_PI / 180.0;
+                RCLCPP_INFO(get_logger(), "Obstacle at %.2f m, stopping. Rotating %.0f deg",
+                            front_distance_, degrees_);
+            }
         } else {
-            wall_reached_ = true;
-            RCLCPP_INFO(get_logger(), "Obstacle at %.2f m, stopping", front_distance_);
-        }
+            double error = target_yaw_ - yaw_;
+            error = std::atan2(std::sin(error), std::cos(error));
+
+            if (std::fabs(error) > 0.02) {
+                cmd.angular.z = 0.5 * error;
+            } else {
+                cmd_pub_->publish(cmd);
+                RCLCPP_INFO(get_logger(), "Rotation done, yaw %.0f deg. Pre-approach finished.",
+                            yaw_ * 180.0 / M_PI);
+                rclcpp::shutdown();
+                return;
+            }
         }
 
         cmd_pub_->publish(cmd);
@@ -68,6 +83,7 @@ private:
 
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
     double yaw_ = 0.0;
+    double target_yaw_ = 0.0;
 
     rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
     float front_distance_ = std::numeric_limits<float>::infinity();
