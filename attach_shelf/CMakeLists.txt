@@ -23,6 +23,12 @@ ament_target_dependencies(pre_approach_node rclcpp sensor_msgs nav_msgs geometry
 
 install(TARGETS pre_approach_node DESTINATION lib/${PROJECT_NAME})
 
+add_executable(approach_service_server_node src/approach_service_server.cpp)
+ament_target_dependencies(approach_service_server_node rclcpp)
+
+rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} rosidl_typesupport_cpp)
+target_link_libraries(approach_service_server_node "${cpp_typesupport_target}")
+
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   # the following line skips the linter which checks for copyrights
@@ -35,6 +41,14 @@ if(BUILD_TESTING)
   ament_lint_auto_find_test_dependencies()
 endif()
 
-install(DIRECTORY launch rviz DESTINATION share/${PROJECT_NAME})
+install(DIRECTORY 
+	launch 
+	rviz 
+	DESTINATION share/${PROJECT_NAME})
+
+install(TARGETS 
+	pre_approach_node 
+	approach_service_server_node 
+	DESTINATION lib/${PROJECT_NAME})
 
 ament_package()
