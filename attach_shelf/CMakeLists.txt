@@ -29,6 +29,8 @@ ament_target_dependencies(approach_service_server_node rclcpp)
 rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} rosidl_typesupport_cpp)
 target_link_libraries(approach_service_server_node "${cpp_typesupport_target}")
 
+ament_target_dependencies(approach_service_server_node rclcpp sensor_msgs)
+
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   # the following line skips the linter which checks for copyrights
