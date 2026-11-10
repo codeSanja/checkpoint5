@@ -6,4 +6,9 @@
     <param name="obstacle" value="$(var obstacle)"/>
     <param name="degrees" value="$(var degrees)"/>
   </node>
+
+    <node pkg="rviz2" exec="rviz2" name="rviz" output="screen"
+        args="-d $(find-pkg-share attach_shelf)/rviz/pre_approach.rviz">
+    <param name="use_sim_time" value="true"/>
+  </node>
 </launch>
